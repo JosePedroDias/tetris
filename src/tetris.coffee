@@ -14,68 +14,67 @@ TODO:
 
 class Grid
   constructor: (@w, @h, arr, color) ->
-    @a = new Array(@w * @h)
-    @S(arr) if arr?
+    @_a = new Array(@w * @h)
+    @setArray(arr) if arr?
     @color = color if color?
 
-  g: (x, y) -> @a[@w*y + x]                # get
+  get: (x, y) -> @_a[@w*y + x]
 
-  s: (x, y, v=true) -> @a[@w*y + x] = v    # set
+  set: (x, y, v=true) -> @_a[@w*y + x] = v
 
-  u: (x, y) -> @s(x, y, undefined)         # unset
+  unset: (x, y) -> @set(x, y, false)
 
-  S: (arr) -> @s(p[0], p[1]) for p in arr  # set array
+  setArray: (arr) -> @set(p[0], p[1]) for p in arr
 
-  r: () ->                                 # returns rotated clone
+  rotatedClone: () ->
       n = new Grid(@h, @w)
       for y in [0 ... @h]
         for x in [0 ... @w]
-          n.s @h - y - 1, x, !!@g(x, y)
+          n.set @h - y - 1, x, !!@get(x, y)
       n.color = @color if @color?
       n
 
-  c: (n, pos) -> # collides
+  r: () -> @rotatedClone()
+
+  collides: (n, pos) ->
     # test 4 limits
-    if (pos[0] < 0 or pos[1] < 0 or pos[0] + n.w > @w or pos[1] + n.h > @h)
-      return true
+    if (pos[0] < 0 or pos[1] < 0 or pos[0] + n.w > @w or pos[1] + n.h > @h) then return true
         
     # stop at first collision
     for y in [0 ... n.h]
       for x in [0 ... n.w]
-        if (n.g x, y and @g x + pos[0], y + pos[1])
-          return true
-    return false
+        if (n.get x, y and @get x + pos[0], y + pos[1]) then return true
+    false
 
-  p: (n, pos) -> # put
+  put: (n, pos) ->
     hasColor = n.color?
     for y in [0 ... n.h]
       for x in [0 ... n.w]
-        v = n.g x, y
+        v = n.get x, y
         if (v)
           v = n.color if hasColor
-          @.s x + pos[0], y + pos[1], v
+          @.set x + pos[0], y + pos[1], v
 
   eraseLine: (y) ->
-    for x in [0 ... @w]
-      @u x, y
+    for x in [0 ... @w] then @unset x, y
 
   gravity: (y) ->
     for y in [y .. 1]
       for x in [0 ... @w]
-        @s x, y @g(x, y - 1)
+        @set x, y @get(x, y - 1)
     @eraseLine 0
 
         
         
 # http://en.wikipedia.org/wiki/Tetris#Gameplay
 blocks = [
-  new Grid(4,1, [ [0,0], [1,0], [2,0], [3,0] ], '#700') # ---
-  new Grid(3,2, [ [0,0], [0,1], [1,1], [2,1] ], '#070') # L_
-  new Grid(3,2, [ [2,0], [0,1], [1,1], [2,1] ], '#007') # _J
-  new Grid(2,2, [ [0,0], [1,0], [0,1], [1,1] ], '#770') # []
-  new Grid(3,2, [ [1,0], [2,0], [0,1], [1,1] ], '#077') # _-
-  new Grid(3,2, [ [1,0], [0,1], [1,1], [2,1] ], '#707') # _!_
-  new Grid(3,2, [ [0,0], [1,0], [1,1], [2,1] ], '#444') # -_
+  new Grid 4,1, [ [0,0], [1,0], [2,0], [3,0] ], '#700' # ---
+  new Grid 3,2, [ [0,0], [0,1], [1,1], [2,1] ], '#070' # L_
+  new Grid 3,2, [ [2,0], [0,1], [1,1], [2,1] ], '#007' # _J
+  new Grid 2,2, [ [0,0], [1,0], [0,1], [1,1] ], '#770' # []
+  new Grid 3,2, [ [1,0], [2,0], [0,1], [1,1] ], '#077' # _-
+  new Grid 3,2, [ [1,0], [0,1], [1,1], [2,1] ], '#707' # _!_
+  new Grid 3,2, [ [0,0], [1,0], [1,1], [2,1] ], '#444' # -_
 ]
   
 # rotated blocks computed upfront...
@@ -94,7 +93,7 @@ window.Tetris =
   init: (@containerEl=document.body, @cellSize=12) ->
     @state =
       score: 0
-      grid: new Grid(10, 16)
+      grid: new Grid 10, 16
       piece:
         idx: 1
         rot: 0
@@ -103,23 +102,36 @@ window.Tetris =
     
 
     # set up canvas
-    @cvsEl = document.createElement 'canvas'
-    @cvsEl.setAttribute 'width',  @state.grid.w * @cellSize
-    @cvsEl.setAttribute 'height', @state.grid.h * @cellSize
-    @containerEl.appendChild @cvsEl
-    @ctx = @cvsEl.getContext '2d'
-      
+    @_cvsEl = document.createElement 'canvas'
+    @_cvsW = @state.grid.w * @cellSize
+    @_cvsH = @state.grid.h * @cellSize
+    @_cvsEl.setAttribute 'width',  @_cvsW
+    @_cvsEl.setAttribute 'height', @_cvsH
+    @containerEl.appendChild @_cvsEl
+    @ctx = @_cvsEl.getContext '2d'
+
+    @updatePiece()
     @draw()
+
+
+
+  updatePiece: () ->
+    p = @state.piece
+    @state.piece.grid = blocks2[ p.idx ][ p.rot ]
       
       
       
   draw: () ->
-    p = @state.piece
-    g = @state.grid
-      
-    b = blocks2[ p.idx ][ p.rot ]
-    g.p b, p.pos
-    @drawGrid g, @ctx #, [0, 1]
+    s = @state
+    p = s.piece
+
+    @ctx.clearRect 0, 0, @_cvsW, @_cvsH
+
+    #g.put b, p.pos
+    #@drawGrid g, @ctx #, [0, 1]
+    
+    @drawGrid p.grid, @ctx, p.pos
+    return
       
       
       
@@ -129,24 +141,35 @@ window.Tetris =
     cs = @cellSize
     for y in [0 ... g.h]
       for x in [0 ... g.w]
-        v = g.g(x, y)
-       if v
-         ctx.fillStyle = v if not gridHasColor
-         ctx.fillRect (dlt[0]+x)*cs, (dlt[1]+y)*cs, cs, cs
+        v = g.get x, y
+        if v
+          ctx.fillStyle = v unless gridHasColor
+          ctx.fillRect (dlt[0]+x)*cs, (dlt[1]+y)*cs, cs, cs
+    return
       
 
    
   left: () ->
-    @state.pos[0] -= 1
+    p = @state.piece.pos
+    p[0] -= 1 if p[0] > 0
+    @draw()
     
   right: () ->
-    @state.pos[0] += 1
+    p = @state.piece.pos
+    p[0] += 1 if p[0] < @state.grid.w - @state.piece.grid.w
+    @draw()
     
   rotR: () ->
-    @state.piece.rot -= 1
+    p = @state.piece
+    if p.rot > 0 then p.rot -= 1 else p.rot = 3
+    @updatePiece()
+    @draw()
     
   rotL: () ->
-    @state.piece.rot += 1
+    p = @state.piece
+    if p.rot < 3 then p.rot += 1 else p.rot = 0
+    @updatePiece()
+    @draw()
     
   down: () ->
   downAll: () ->
@@ -160,9 +183,9 @@ t.init()
 document.addEventListener 'keydown', (ev) ->
   # l:37, r:39, u:38, d:40, z:90, x:88
   switch ev.keyCode
-     when 37     then t.left()
-     when 39     then t.right()
-     when 38, 88 then t.rotR()
-     when 90     then t.rotL()
-     when 40     then t.down()
-     when 32     then t.downAll()
+    when 37     then t.left()
+    when 39     then t.right()
+    when 38, 88 then t.rotR()
+    when 90     then t.rotL()
+    when 40     then t.down()
+    when 32     then t.downAll()
