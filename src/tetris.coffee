@@ -5,11 +5,14 @@ SUBLIME KEYS:
 - alt + shift + w (watch)
 
 TODO:
-- grids collisions test
-- collide and move down
+- fix eraseLine and gravity bug
+- score and increasing levels (easy)
 - block sprites
 - animation
 ###
+
+
+alert2 = (msg) -> document.body.appendChild document.createTextNode(msg)
 
 
 class Grid
@@ -38,12 +41,16 @@ class Grid
 
   collides: (n, pos) ->
     # test 4 limits
-    if (pos[0] < 0 or pos[1] < 0 or pos[0] + n.w > @w or pos[1] + n.h > @h) then return true
+    if pos[0] < 0 or
+       pos[1] < 0 or
+       pos[0] + n.w > @w or
+       pos[1] + n.h > @h
+          return true
         
     # stop at first collision
     for y in [0 ... n.h]
       for x in [0 ... n.w]
-        if (n.get x, y and @get x + pos[0], y + pos[1]) then return true
+        if n.get(x, y) and @get(x + pos[0], y + pos[1]) then return true
     false
 
   put: (n, pos) ->
@@ -51,20 +58,38 @@ class Grid
     for y in [0 ... n.h]
       for x in [0 ... n.w]
         v = n.get x, y
-        if (v)
+        if v
           v = n.color if hasColor
           @.set x + pos[0], y + pos[1], v
 
+  isLineFilled: (y) ->
+    for x in [0 ... @w]
+      return false unless @get x, y
+    true
+
   eraseLine: (y) ->
-    for x in [0 ... @w] then @unset x, y
+    for x in [0 ... @w]
+      @unset x, y
+    false
 
-  gravity: (y) ->
-    for y in [y .. 1]
-      for x in [0 ... @w]
-        @set x, y @get(x, y - 1)
+  copyLineAbove: (y) ->
+    for x in [0 ... @w]
+      v = @get x, y - 1
+      @set x, y, (v ? v : false)
+
+  gravity: (y0) ->
+    for y in [y0 ... 0]
+      @copyLineAbove y
     @eraseLine 0
-
-        
+    
+  toString: () ->
+    r = []
+    for y in [0 ... @h]
+      for x in [0 ... @w]
+        r.push( @get x, y ? 'O' : '.' )
+      r.push '\n'
+    r.join('')
+   
         
 # http://en.wikipedia.org/wiki/Tetris#Gameplay
 blocks = [
@@ -85,22 +110,13 @@ for b in blocks
     row.push b
     b = b.r()
   blocks2.push row
-    
-
+  
 
 window.Tetris =
   
   init: (@containerEl=document.body, @cellSize=12) ->
-    @state =
-      score: 0
-      grid: new Grid 10, 16
-      piece:
-        idx: 1
-        rot: 0
-        pos: [0, 0]
-      
-    
-
+    @restartGame()
+  
     # set up canvas
     @_cvsEl = document.createElement 'canvas'
     @_cvsW = @state.grid.w * @cellSize
@@ -110,29 +126,36 @@ window.Tetris =
     @containerEl.appendChild @_cvsEl
     @ctx = @_cvsEl.getContext '2d'
 
-    @updatePiece()
     @draw()
 
 
+  restartGame: () ->
+    @state =
+      score: 0
+      grid: new Grid 10, 16
+      piece:
+        idx: Math.floor( Math.random() * 7 )
+        rot: 0
+        pos: [4, 0]
+
+    @updatePiece()
+
+    @timer = setInterval @down.bind(@), 250
+    
 
   updatePiece: () ->
     p = @state.piece
     @state.piece.grid = blocks2[ p.idx ][ p.rot ]
-      
-      
+       
       
   draw: () ->
     s = @state
     p = s.piece
 
     @ctx.clearRect 0, 0, @_cvsW, @_cvsH
-
-    #g.put b, p.pos
-    #@drawGrid g, @ctx #, [0, 1]
-    
+    @drawGrid s.grid, @ctx
     @drawGrid p.grid, @ctx, p.pos
     return
-      
       
       
   drawGrid: (g, ctx, dlt=[0,0]) ->
@@ -146,35 +169,88 @@ window.Tetris =
           ctx.fillStyle = v unless gridHasColor
           ctx.fillRect (dlt[0]+x)*cs, (dlt[1]+y)*cs, cs, cs
     return
-      
 
-   
+
+  isColliding: () ->
+    @state.grid.collides @state.piece.grid, @state.piece.pos
+
+
+  endGame: () ->
+    clearInterval @timer
+    alert2 'game over'
+    true
+
+
+  correctCollision: (x=0, y=0) ->
+    unless @isColliding() then return false
+    if y > 0
+      @state.piece.pos[1] -= 1
+      if @isColliding() then return @endGame()
+      @gluePiece()
+    else if x in [-1, 1]
+      @state.piece.pos[0] -= x
+    else
+      @state.piece.pos[0] += 1
+      if @isColliding()
+        @state.piece.pos[0] -= 2
+        if @isColliding() then return @endGame()
+      return false
+    true
+
+
+  gluePiece: () ->
+    g = @state.grid
+    p = @state.piece
+    pos = p.pos
+
+    g.put p.grid, pos
+
+    for y in [ pos[1] + p.grid.h ... pos[1] ]
+      if g.isLineFilled y
+        g.gravity y
+        y -= 1
+
+    p.idx = Math.floor( Math.random() * 7 )
+    p.rot = 0
+    p.pos = [4, 0]
+    @updatePiece()
+    @draw()
+
+
   left: () ->
-    p = @state.piece.pos
-    p[0] -= 1 if p[0] > 0
+    @state.piece.pos[0] -= 1
+    @correctCollision(-1)
     @draw()
     
   right: () ->
-    p = @state.piece.pos
-    p[0] += 1 if p[0] < @state.grid.w - @state.piece.grid.w
+    @state.piece.pos[0] += 1
+    @correctCollision(1)
     @draw()
     
   rotR: () ->
     p = @state.piece
     if p.rot > 0 then p.rot -= 1 else p.rot = 3
     @updatePiece()
+    @correctCollision()
     @draw()
     
   rotL: () ->
     p = @state.piece
     if p.rot < 3 then p.rot += 1 else p.rot = 0
     @updatePiece()
+    @correctCollision()
     @draw()
     
   down: () ->
-  downAll: () ->
+    @state.piece.pos[1] += 1
+    @correctCollision(0, 1)
+    @draw()
 
-  
+  downAll: () ->
+    while not @correctCollision(0, 1)
+      @state.piece.pos[1] += 1
+
+
   
 # GO GO GO
 t = window.Tetris
@@ -189,3 +265,4 @@ document.addEventListener 'keydown', (ev) ->
     when 90     then t.rotL()
     when 40     then t.down()
     when 32     then t.downAll()
+
