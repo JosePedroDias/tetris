@@ -12,7 +12,11 @@ TODO:
 ###
 
 
-alert2 = (msg) -> document.body.appendChild document.createTextNode(msg)
+$ = (sel) ->
+  if typeof sel == 'string'
+    document.querySelector sel
+  else
+    sel
 
 
 class Grid
@@ -60,7 +64,7 @@ class Grid
         v = n.get x, y
         if v
           v = n.color if hasColor
-          @.set x + pos[0], y + pos[1], v
+          @set x + pos[0], y + pos[1], v
 
   isLineFilled: (y) ->
     for x in [0 ... @w]
@@ -75,7 +79,10 @@ class Grid
   copyLineAbove: (y) ->
     for x in [0 ... @w]
       v = @get x, y - 1
-      @set x, y, (v ? v : false)
+      if v
+        @set x, y, v
+      else
+        @unset x, y
 
   gravity: (y0) ->
     for y in [y0 ... 0]
@@ -86,7 +93,10 @@ class Grid
     r = []
     for y in [0 ... @h]
       for x in [0 ... @w]
-        r.push( @get x, y ? 'O' : '.' )
+        if @get x, y
+          r.push('O')
+        else
+          r.push('.')
       r.push '\n'
     r.join('')
    
@@ -114,17 +124,33 @@ for b in blocks
 
 window.Tetris =
   
-  init: (@containerEl=document.body, @cellSize=12) ->
+  init: (o) ->
+    @_containerEl = document.body
+    @_cellSize    = 16
+
+    @_containerEl = $(o.container) if o.container?
+    @_cellSize    =   o.cellSize   if o.cellSize?
+    @_scoreEl     = $(o.score)     if o.score?
+    @_nextEl      = $(o.next)      if o.next?
+
     @restartGame()
   
     # set up canvas
     @_cvsEl = document.createElement 'canvas'
-    @_cvsW = @state.grid.w * @cellSize
-    @_cvsH = @state.grid.h * @cellSize
+    @_cvsW = @state.grid.w * @_cellSize
+    @_cvsH = @state.grid.h * @_cellSize
     @_cvsEl.setAttribute 'width',  @_cvsW
     @_cvsEl.setAttribute 'height', @_cvsH
-    @containerEl.appendChild @_cvsEl
-    @ctx = @_cvsEl.getContext '2d'
+    @_containerEl.appendChild @_cvsEl
+
+    @_nextPieceCvsEl = document.createElement 'canvas'
+    @_nextPieceCvsEl.setAttribute 'width',  4 * @_cellSize
+    @_nextPieceCvsEl.setAttribute 'height', 4 * @_cellSize
+    @_nextEl.appendChild @_nextPieceCvsEl
+
+
+    @_ctx          = @_cvsEl.getContext '2d'
+    @_nextPieceCtx = @_nextPieceCvsEl.getContext '2d'
 
     @draw()
 
@@ -132,36 +158,67 @@ window.Tetris =
   restartGame: () ->
     @state =
       score: 0
-      grid: new Grid 10, 16
+      grid:  new Grid 10, 16
+      level: 0
       piece:
         idx: Math.floor( Math.random() * 7 )
         rot: 0
         pos: [4, 0]
+      nextPiece:
+        idx: Math.floor( Math.random() * 7 )
+        rot: 0
+        pos: [0, 0]
 
     @updatePiece()
+    @updatePiece(true)
+    @increaseScore()
 
-    @timer = setInterval @down.bind(@), 250
+    @timer = setInterval @down.bind(@), 300
     
 
-  updatePiece: () ->
-    p = @state.piece
-    @state.piece.grid = blocks2[ p.idx ][ p.rot ]
-       
+  updatePiece: (next) ->
+    p = if next then @state.nextPiece else @state.piece
+    ###if next
+      p.pos = [
+        (4 - p.grid.w) / 2,
+        (4 - p.grid.h) / 2
+      ]###
+    p.grid = blocks2[ p.idx ][ p.rot ]
+
+
+  increaseScore: (nrLines=0) ->
+    s = @state
+    inc = switch nrLines
+      when 0 then    0
+      when 1 then   40
+      when 2 then  100
+      when 1 then  300
+      when 2 then 1200
+    s.score += inc * (s.level + 1)
+    @updateScore "level:#{s.level} score:#{s.score}"
+
+
+  updateScore: (msg) ->
+    @_scoreEl.innerHTML = msg
       
+
   draw: () ->
     s = @state
     p = s.piece
 
-    @ctx.clearRect 0, 0, @_cvsW, @_cvsH
-    @drawGrid s.grid, @ctx
-    @drawGrid p.grid, @ctx, p.pos
+    @_ctx.clearRect 0, 0, @_cvsW, @_cvsH
+    @drawGrid s.grid, @_ctx
+    @drawGrid p.grid, @_ctx, p.pos unless @skipPieceDraw
+
+    @_nextPieceCtx.clearRect 0, 0, @_cellSize*4, @_cellSize*4
+    @drawGrid s.nextPiece.grid, @_nextPieceCtx
     return
       
       
   drawGrid: (g, ctx, dlt=[0,0]) ->
     gridHasColor = g.color?
     ctx.fillStyle = g.color if gridHasColor
-    cs = @cellSize
+    cs = @_cellSize
     for y in [0 ... g.h]
       for x in [0 ... g.w]
         v = g.get x, y
@@ -177,7 +234,7 @@ window.Tetris =
 
   endGame: () ->
     clearInterval @timer
-    alert2 'game over'
+    @updateScore 'game over'
     true
 
 
@@ -201,19 +258,33 @@ window.Tetris =
   gluePiece: () ->
     g = @state.grid
     p = @state.piece
+    np = @state.nextPiece
     pos = p.pos
 
     g.put p.grid, pos
 
-    for y in [ pos[1] + p.grid.h ... pos[1] ]
-      if g.isLineFilled y
+    nrLines = 0
+    dy = p.grid.h - 1
+    while dy >= 0
+      y = pos[1] + dy
+      isF = g.isLineFilled y
+      if isF
+        nrLines += 1
         g.gravity y
-        y -= 1
+      else
+        dy -= 1
+    
+    @increaseScore nrLines if nrLines > 0
 
-    p.idx = Math.floor( Math.random() * 7 )
+    # next piece
+    p.idx = np.idx
     p.rot = 0
     p.pos = [4, 0]
+    np.idx = Math.floor( Math.random() * 7 )
+
     @updatePiece()
+    @updatePiece(true)
+
     @draw()
 
 
@@ -254,7 +325,10 @@ window.Tetris =
   
 # GO GO GO
 t = window.Tetris
-t.init()
+t.init
+  container: '#grid'
+  score:     '#score'
+  next:      '#next'
 
 document.addEventListener 'keydown', (ev) ->
   # l:37, r:39, u:38, d:40, z:90, x:88
