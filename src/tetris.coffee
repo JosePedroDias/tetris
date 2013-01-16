@@ -5,8 +5,7 @@ SUBLIME KEYS:
 - alt + shift + w (watch)
 
 TODO:
-- fix eraseLine and gravity bug
-- score and increasing levels (easy)
+- increasing levels (easy)
 - block sprites
 - animation
 ###
@@ -17,6 +16,19 @@ $ = (sel) ->
     document.querySelector sel
   else
     sel
+
+
+class Canvas
+  constructor: (@w, @h, @parent) ->
+    unless @h? then @h = @w
+    @el = document.createElement 'canvas'
+    @el.setAttribute 'width',  @w
+    @el.setAttribute 'height', @h
+    if @parent then @parent.appendChild @el
+    @ctx = @el.getContext '2d'
+  
+  clear: () ->
+    @ctx.clearRect 0, 0, @w, @h
 
 
 class Grid
@@ -103,13 +115,13 @@ class Grid
         
 # http://en.wikipedia.org/wiki/Tetris#Gameplay
 blocks = [
-  new Grid 4,1, [ [0,0], [1,0], [2,0], [3,0] ], '#700' # ---
-  new Grid 3,2, [ [0,0], [0,1], [1,1], [2,1] ], '#070' # L_
-  new Grid 3,2, [ [2,0], [0,1], [1,1], [2,1] ], '#007' # _J
-  new Grid 2,2, [ [0,0], [1,0], [0,1], [1,1] ], '#770' # []
-  new Grid 3,2, [ [1,0], [2,0], [0,1], [1,1] ], '#077' # _-
-  new Grid 3,2, [ [1,0], [0,1], [1,1], [2,1] ], '#707' # _!_
-  new Grid 3,2, [ [0,0], [1,0], [1,1], [2,1] ], '#444' # -_
+  new Grid 4,1, [ [0,0], [1,0], [2,0], [3,0] ], '#F00' # ---  red
+  new Grid 3,2, [ [0,0], [0,1], [1,1], [2,1] ], '#FF0' # L_   yellow
+  new Grid 3,2, [ [2,0], [0,1], [1,1], [2,1] ], '#F0F' # _J   magenta
+  new Grid 2,2, [ [0,0], [1,0], [0,1], [1,1] ], '#00F' # []   blue
+  new Grid 3,2, [ [1,0], [2,0], [0,1], [1,1] ], '#0FF' # _-   cyan
+  new Grid 3,2, [ [1,0], [0,1], [1,1], [2,1] ], '#0F0' # _!_  green
+  new Grid 3,2, [ [0,0], [1,0], [1,1], [2,1] ], '#F70' # -_   orange
 ]
   
 # rotated blocks computed upfront...
@@ -135,22 +147,12 @@ window.Tetris =
 
     @restartGame()
   
-    # set up canvas
-    @_cvsEl = document.createElement 'canvas'
-    @_cvsW = @state.grid.w * @_cellSize
-    @_cvsH = @state.grid.h * @_cellSize
-    @_cvsEl.setAttribute 'width',  @_cvsW
-    @_cvsEl.setAttribute 'height', @_cvsH
-    @_containerEl.appendChild @_cvsEl
+    # set up canvases
+    @_mainCvs = new Canvas @state.grid.w * @_cellSize, @state.grid.h * @_cellSize, @_containerEl
+    @_mainCtx = @_mainCvs.ctx
 
-    @_nextPieceCvsEl = document.createElement 'canvas'
-    @_nextPieceCvsEl.setAttribute 'width',  4 * @_cellSize
-    @_nextPieceCvsEl.setAttribute 'height', 4 * @_cellSize
-    @_nextEl.appendChild @_nextPieceCvsEl
-
-
-    @_ctx          = @_cvsEl.getContext '2d'
-    @_nextPieceCtx = @_nextPieceCvsEl.getContext '2d'
+    @_nextPieceCvs = new Canvas 4 * @_cellSize, 4 * @_cellSize, @_nextEl
+    @_nextPieceCtx = @_nextPieceCvs.ctx
 
     @draw()
 
@@ -158,8 +160,9 @@ window.Tetris =
   restartGame: () ->
     @state =
       score: 0
-      grid:  new Grid 10, 16
+      lines: 0
       level: 0
+      grid:  new Grid 10, 16
       piece:
         idx: Math.floor( Math.random() * 7 )
         rot: 0
@@ -178,13 +181,13 @@ window.Tetris =
 
   updatePiece: (next) ->
     p = if next then @state.nextPiece else @state.piece
-    ###if next
+    p.grid = blocks2[ p.idx ][ p.rot ]
+    if next
       p.pos = [
         (4 - p.grid.w) / 2,
         (4 - p.grid.h) / 2
-      ]###
-    p.grid = blocks2[ p.idx ][ p.rot ]
-
+      ]
+    
 
   increaseScore: (nrLines=0) ->
     s = @state
@@ -194,8 +197,13 @@ window.Tetris =
       when 2 then  100
       when 1 then  300
       when 2 then 1200
+    s.lines += nrLines
     s.score += inc * (s.level + 1)
-    @updateScore "level:#{s.level} score:#{s.score}"
+    @updateScore [
+      "<p><b>score</b>: #{s.score}</p>",
+      "<p><b>lines</b>: #{s.lines}</p>",
+      "<p><b>level</b>: #{s.level}</p>",
+    ].join ''
 
 
   updateScore: (msg) ->
@@ -203,15 +211,16 @@ window.Tetris =
       
 
   draw: () ->
-    s = @state
-    p = s.piece
+    s  = @state
+    p  = s.piece
+    np = s.nextPiece
 
-    @_ctx.clearRect 0, 0, @_cvsW, @_cvsH
-    @drawGrid s.grid, @_ctx
-    @drawGrid p.grid, @_ctx, p.pos unless @skipPieceDraw
+    @_mainCvs.clear()
+    @drawGrid s.grid, @_mainCtx
+    @drawGrid p.grid, @_mainCtx, p.pos unless @skipPieceDraw
 
-    @_nextPieceCtx.clearRect 0, 0, @_cellSize*4, @_cellSize*4
-    @drawGrid s.nextPiece.grid, @_nextPieceCtx
+    @_nextPieceCvs.clear()
+    @drawGrid np.grid, @_nextPieceCtx, np.pos
     return
       
       
@@ -234,6 +243,7 @@ window.Tetris =
 
   endGame: () ->
     clearInterval @timer
+    delete @timer
     @updateScore 'game over'
     true
 
@@ -288,55 +298,79 @@ window.Tetris =
     @draw()
 
 
+  isRunning: () ->
+    !!@timer
+
+
   left: () ->
     @state.piece.pos[0] -= 1
     @correctCollision(-1)
     @draw()
     
+
   right: () ->
     @state.piece.pos[0] += 1
     @correctCollision(1)
     @draw()
     
+
   rotR: () ->
     p = @state.piece
     if p.rot > 0 then p.rot -= 1 else p.rot = 3
+    if p.idx == 0 then p.pos[0] += (p.rot % 2 - 0.5) * 2
     @updatePiece()
     @correctCollision()
     @draw()
     
+
   rotL: () ->
     p = @state.piece
     if p.rot < 3 then p.rot += 1 else p.rot = 0
+    if p.idx == 0 then p.pos[0] += (p.rot % 2 - 0.5) * 2
     @updatePiece()
     @correctCollision()
     @draw()
     
+
   down: () ->
     @state.piece.pos[1] += 1
     @correctCollision(0, 1)
     @draw()
+
 
   downAll: () ->
     while not @correctCollision(0, 1)
       @state.piece.pos[1] += 1
 
 
+  togglePause: () ->
+    if @timer
+      clearInterval @timer
+      delete @timer
+      @updateScore 'game is paused'
+    else
+      @timer = setInterval @down.bind(@), 300
+      @increaseScore 0
   
+
 # GO GO GO
 t = window.Tetris
 t.init
   container: '#grid'
   score:     '#score'
   next:      '#next'
+  cellSize:  20
+
 
 document.addEventListener 'keydown', (ev) ->
-  # l:37, r:39, u:38, d:40, z:90, x:88
+  # l:37, r:39, u:38, d:40, z:90, x:88, p:80
+  console.log ev.keyCode
   switch ev.keyCode
-    when 37     then t.left()
-    when 39     then t.right()
-    when 38, 88 then t.rotR()
-    when 90     then t.rotL()
-    when 40     then t.down()
-    when 32     then t.downAll()
+    when 37     then t.left()        if t.isRunning()
+    when 39     then t.right()       if t.isRunning()
+    when 38, 88 then t.rotL()        if t.isRunning()
+    when 90     then t.rotR()        if t.isRunning()
+    when 40     then t.down()        if t.isRunning()
+    when 32     then t.downAll()     if t.isRunning()
+    when 80     then t.togglePause()
 

@@ -5,20 +5,59 @@
 
     <title>tetris</title>
 
-    <style type="text/css">
-      body {
-        font-family: sans-serif;
-      }
-      canvas {
-        border: 1px solid #AAF;
-      }
-    </style>
+    <link rel="stylesheet" type="text/css" href="index.css">
   </head>
     
   <body>
-    <div id="grid"></div>
-    <div id="score"></div>
-    <div id="next"></div>
+    <div id="page">
+      <div id="ctn">
+
+        <div id="grid" class="inlineB"></div>
+
+        <div class="inlineB">
+          <div id="next"></div>
+          <div id="score"></div>
+        </div>
+
+        <div id="instructions" class="inlineB">
+          <dl>
+            <dt>left</dt>
+            <dd>moves block left</dd>
+          </dl>
+
+          <dl>
+            <dt>right</dt>
+            <dd>moves block right</dd>
+          </dl>
+
+          <dl>
+            <dt>up, z</dt>
+            <dd>rotates block clockwise</dd>
+          </dl>
+
+          <dl>
+            <dt>x</dt>
+            <dd>rotates block anticlockwise</dd>
+          </dl>
+
+          <dl>
+            <dt>down</dt>
+            <dd>moves block down</dd>
+          </dl>
+
+          <dl>
+            <dt>space bar</dt>
+            <dd>moves block all the way down</dd>
+          </dl>
+
+          <dl>
+            <dt>p</dt>
+            <dd>pauses/resumes game</dd>
+          </dl>
+        </div>
+
+      </div>
+    </div>
 
     <script type="text/javascript" src="lib/tetris.js"></script>
   </body>
